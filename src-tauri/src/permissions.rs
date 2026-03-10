@@ -400,7 +400,7 @@ pub fn get_api_key_status() -> ApiKeyStatus {
 
 // check for openai key too
 #[tauri::command]
-pub fn get_all_api_keys_status() -> serde_json::Result<serde_json::Value> {
+pub fn get_all_api_keys_status() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({
         "anthropic": std::env::var("ANTHROPIC_API_KEY").is_ok(),
         "openai": std::env::var("OPENAI_API_KEY").is_ok(),

@@ -21,8 +21,10 @@ use tokio::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    Emitter, Manager, PhysicalPosition, State,
+    Emitter, Manager, State,
 };
+#[cfg(target_os = "macos")]
+use tauri::PhysicalPosition;
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 
 #[cfg(target_os = "macos")]
@@ -391,10 +393,13 @@ mod storage_cmd {
 
 mod voice_cmd {
     use crate::voice::{VoiceSession, PushToTalkSession};
+    #[cfg(target_os = "macos")]
     use crate::get_screen_info;
     use crate::panels;
     use std::sync::Arc;
-    use tauri::{State, Manager, Emitter};
+    use tauri::{State, Emitter};
+    #[cfg(target_os = "macos")]
+    use tauri::Manager;
 
     pub struct VoiceState {
         pub session: Arc<VoiceSession>,
@@ -452,14 +457,22 @@ mod voice_cmd {
 
         // capture screenshot only for computer mode (like hotkey does)
         let screenshot = if mode_str == "computer" {
-            panels::take_screenshot_excluding_app_sync().ok()
+            #[cfg(target_os = "macos")]
+            {
+                panels::take_screenshot_excluding_app_sync().ok()
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                // On non-macOS, use regular screenshot
+                crate::computer::ComputerControl::new().ok().and_then(|c| c.take_screenshot().ok())
+            }
         } else {
             None
         };
 
         // store screenshot and mode
         if let Some(ss) = &screenshot {
-            *state.screenshot.lock().unwrap() = Some(ss.clone());
+            *state.screenshot.lock().unwrap() = Some(ss);
         }
         *state.mode.lock().unwrap() = Some(mode_str.clone());
 
@@ -612,7 +625,14 @@ fn main() {
 
                                 // capture screenshot only for computer mode
                                 let screenshot = if mode == "computer" {
-                                    panels::take_screenshot_excluding_app_sync().ok()
+                                    #[cfg(target_os = "macos")]
+                                    {
+                                        panels::take_screenshot_excluding_app_sync().ok()
+                                    }
+                                    #[cfg(not(target_os = "macos"))]
+                                    {
+                                        crate::computer::ComputerControl::new().ok().and_then(|c| c.take_screenshot().ok())
+                                    }
                                 } else {
                                     None
                                 };
@@ -735,12 +755,17 @@ fn main() {
 
                     // Cmd+Shift+H - help mode (screenshot + prompt)
                     if shortcut.matches(Modifiers::SUPER | Modifiers::SHIFT, Code::KeyH) {
-                        let screenshot = panels::take_screenshot_excluding_app_sync().ok();
-
                         #[cfg(target_os = "macos")]
-                        trigger_screen_flash();
-
-                        let _ = app.emit("hotkey-help", serde_json::json!({ "screenshot": screenshot }));
+                        {
+                            let screenshot = panels::take_screenshot_excluding_app_sync().ok();
+                            trigger_screen_flash();
+                            let _ = app.emit("hotkey-help", serde_json::json!({ "screenshot": screenshot }));
+                        }
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            let screenshot = crate::computer::ComputerControl::new().ok().and_then(|c| c.take_screenshot().ok());
+                            let _ = app.emit("hotkey-help", serde_json::json!({ "screenshot": screenshot }));
+                        }
                     }
 
                     // Cmd+Shift+Space - spotlight mode (show centered input)
@@ -796,8 +821,11 @@ fn main() {
             current_session_id: std::sync::Mutex::new(0),
         })
         .setup(|app| {
-            // hide from dock - menubar app only
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            // hide from dock - menubar app only (macOS only)
+            #[cfg(target_os = "macos")]
+            {
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            }
 
             #[cfg(target_os = "macos")]
             {
