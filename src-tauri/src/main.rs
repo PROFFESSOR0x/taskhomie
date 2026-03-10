@@ -10,6 +10,7 @@ mod api;
 mod bash;
 mod browser;
 mod computer;
+mod openai_api;
 mod panels;
 mod permissions;
 mod storage;
@@ -395,6 +396,7 @@ mod voice_cmd {
     use crate::voice::{VoiceSession, PushToTalkSession};
     #[cfg(target_os = "macos")]
     use crate::get_screen_info;
+    #[cfg(target_os = "macos")]
     use crate::panels;
     use std::sync::Arc;
     use tauri::{State, Emitter};
@@ -472,7 +474,7 @@ mod voice_cmd {
 
         // store screenshot and mode
         if let Some(ss) = &screenshot {
-            *state.screenshot.lock().unwrap() = Some(ss);
+            *state.screenshot.lock().unwrap() = Some(ss.to_string());
         }
         *state.mode.lock().unwrap() = Some(mode_str.clone());
 
