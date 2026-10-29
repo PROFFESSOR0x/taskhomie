@@ -54,6 +54,16 @@ pub struct ComputerAction {
     pub key: Option<String>,  // for hold_key action
     #[serde(default)]
     pub region: Option<[i32; 4]>,  // for zoom action [x1, y1, x2, y2]
+    #[serde(default)]
+    pub repeat: Option<u32>,  // key action: press N times (computer toolset)
+    #[serde(default)]
+    pub duration: Option<f64>,  // wait / hold_key seconds (computer toolset)
+}
+
+// macOS delivers a click at the previous cursor position when it follows a move
+// immediately, so back-to-back clicks (batched actions) land on the wrong button
+fn settle_after_move() {
+    std::thread::sleep(std::time::Duration::from_millis(80));
 }
 
 pub struct ComputerControl {
@@ -181,6 +191,7 @@ impl ComputerControl {
                     let (x, y) = self.map_from_ai_space(coord[0], coord[1]);
                     enigo.move_mouse(x, y, Coordinate::Abs)
                         .map_err(|e| ComputerError::Input(e.to_string()))?;
+                    settle_after_move();
                 }
                 Ok(None)
             }
@@ -190,6 +201,7 @@ impl ComputerControl {
                     let (x, y) = self.map_from_ai_space(coord[0], coord[1]);
                     enigo.move_mouse(x, y, Coordinate::Abs)
                         .map_err(|e| ComputerError::Input(e.to_string()))?;
+                    settle_after_move();
                 }
                 enigo.button(Button::Left, Direction::Click)
                     .map_err(|e| ComputerError::Input(e.to_string()))?;
@@ -201,6 +213,7 @@ impl ComputerControl {
                     let (x, y) = self.map_from_ai_space(coord[0], coord[1]);
                     enigo.move_mouse(x, y, Coordinate::Abs)
                         .map_err(|e| ComputerError::Input(e.to_string()))?;
+                    settle_after_move();
                 }
                 enigo.button(Button::Right, Direction::Click)
                     .map_err(|e| ComputerError::Input(e.to_string()))?;
@@ -212,6 +225,7 @@ impl ComputerControl {
                     let (x, y) = self.map_from_ai_space(coord[0], coord[1]);
                     enigo.move_mouse(x, y, Coordinate::Abs)
                         .map_err(|e| ComputerError::Input(e.to_string()))?;
+                    settle_after_move();
                 }
                 enigo.button(Button::Middle, Direction::Click)
                     .map_err(|e| ComputerError::Input(e.to_string()))?;
@@ -223,6 +237,7 @@ impl ComputerControl {
                     let (x, y) = self.map_from_ai_space(coord[0], coord[1]);
                     enigo.move_mouse(x, y, Coordinate::Abs)
                         .map_err(|e| ComputerError::Input(e.to_string()))?;
+                    settle_after_move();
                 }
                 enigo.button(Button::Left, Direction::Click)
                     .map_err(|e| ComputerError::Input(e.to_string()))?;
@@ -236,6 +251,7 @@ impl ComputerControl {
                     let (x, y) = self.map_from_ai_space(coord[0], coord[1]);
                     enigo.move_mouse(x, y, Coordinate::Abs)
                         .map_err(|e| ComputerError::Input(e.to_string()))?;
+                    settle_after_move();
                 }
                 for _ in 0..3 {
                     enigo.button(Button::Left, Direction::Click)
@@ -251,10 +267,12 @@ impl ComputerControl {
 
                     enigo.move_mouse(sx, sy, Coordinate::Abs)
                         .map_err(|e| ComputerError::Input(e.to_string()))?;
+                    settle_after_move();
                     enigo.button(Button::Left, Direction::Press)
                         .map_err(|e| ComputerError::Input(e.to_string()))?;
                     enigo.move_mouse(ex, ey, Coordinate::Abs)
                         .map_err(|e| ComputerError::Input(e.to_string()))?;
+                    settle_after_move();
                     enigo.button(Button::Left, Direction::Release)
                         .map_err(|e| ComputerError::Input(e.to_string()))?;
                 }
@@ -278,13 +296,15 @@ impl ComputerControl {
 
             "key" => {
                 if let Some(key_str) = &action.text {
-                    #[cfg(target_os = "macos")]
-                    {
-                        self.press_key_cgevent(key_str)?;
-                    }
-                    #[cfg(not(target_os = "macos"))]
-                    {
-                        self.press_key(&mut enigo, key_str)?;
+                    for _ in 0..action.repeat.unwrap_or(1).clamp(1, 100) {
+                        #[cfg(target_os = "macos")]
+                        {
+                            self.press_key_cgevent(key_str)?;
+                        }
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            self.press_key(&mut enigo, key_str)?;
+                        }
                     }
                 }
                 Ok(None)
@@ -295,6 +315,7 @@ impl ComputerControl {
                     let (x, y) = self.map_from_ai_space(coord[0], coord[1]);
                     enigo.move_mouse(x, y, Coordinate::Abs)
                         .map_err(|e| ComputerError::Input(e.to_string()))?;
+                    settle_after_move();
                 }
 
                 let amount = action.scroll_amount.unwrap_or(3);
@@ -321,7 +342,8 @@ impl ComputerControl {
             }
 
             "wait" => {
-                std::thread::sleep(std::time::Duration::from_secs(1));
+                let secs = action.duration.unwrap_or(1.0).clamp(0.0, 300.0);
+                std::thread::sleep(std::time::Duration::from_secs_f64(secs));
                 Ok(None)
             }
 
@@ -330,6 +352,7 @@ impl ComputerControl {
                     let (x, y) = self.map_from_ai_space(coord[0], coord[1]);
                     enigo.move_mouse(x, y, Coordinate::Abs)
                         .map_err(|e| ComputerError::Input(e.to_string()))?;
+                    settle_after_move();
                 }
                 enigo.button(Button::Left, Direction::Press)
                     .map_err(|e| ComputerError::Input(e.to_string()))?;
@@ -341,6 +364,7 @@ impl ComputerControl {
                     let (x, y) = self.map_from_ai_space(coord[0], coord[1]);
                     enigo.move_mouse(x, y, Coordinate::Abs)
                         .map_err(|e| ComputerError::Input(e.to_string()))?;
+                    settle_after_move();
                 }
                 enigo.button(Button::Left, Direction::Release)
                     .map_err(|e| ComputerError::Input(e.to_string()))?;
@@ -350,7 +374,8 @@ impl ComputerControl {
             "hold_key" => {
                 // hold_key holds a modifier key while performing the action in 'text' field
                 // e.g. hold shift while clicking
-                if let Some(key_str) = &action.key {
+                // the computer toolset sends the key in `text` plus a `duration`
+                if let Some(key_str) = action.key.as_ref().or(action.text.as_ref()) {
                     #[cfg(target_os = "macos")]
                     {
                         self.hold_key_cgevent(key_str)?;
@@ -358,6 +383,9 @@ impl ComputerControl {
                     #[cfg(not(target_os = "macos"))]
                     {
                         self.hold_key_enigo(&mut enigo, key_str)?;
+                    }
+                    if let Some(secs) = action.duration {
+                        std::thread::sleep(std::time::Duration::from_secs_f64(secs.clamp(0.0, 300.0)));
                     }
                 }
                 Ok(None)
